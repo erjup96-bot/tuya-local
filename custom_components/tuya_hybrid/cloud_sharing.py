@@ -240,12 +240,11 @@ class Cloud:
             }
 
     @property
-    def qr_code_url(self) -> str | None:
-        """Return a URL to the QR code image."""
+    def qr_code_url(self) -> str:
+        """Return QR code URL."""
         if not self.__qr_code:
-            return None
-        # Standard QR code generator URL using the token
-        return f"https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl={self.__qr_code}&choe=UTF-8"
+            return ""
+        return f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={self.__qr_code}"
 
 
 class DeviceListener(SharingDeviceListener):
