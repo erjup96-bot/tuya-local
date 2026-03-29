@@ -71,6 +71,12 @@ CONF_ACTIONS = {
     CONF_SETUP_CLOUD_SHARING: "Link Tuya Account (Easy Login via QR Code)",
 }
 
+CONF_ACTIONS_FIRST_TIME = {
+    CONF_SETUP_CLOUD_SHARING: "Link Tuya Account (Easy Login via QR Code - RECOMMENDED)",
+    CONF_SETUP_CLOUD: "Manual Cloud Configuration (Client ID/Secret)",
+    CONF_NO_CLOUD: "No Cloud (Manual device entry only)",
+}
+
 CONFIGURE_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_ACTION, default=CONF_ADD_DEVICE): vol.In(CONF_ACTIONS),
@@ -351,12 +357,28 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
+        if user_input is not None:
+            action = user_input.get(CONF_ACTION)
+            if action == CONF_SETUP_CLOUD_SHARING:
+                return await self.async_step_cloud_sharing()
+            if action == CONF_SETUP_CLOUD:
+                return await self.async_step_cloud_setup_manual()
+            if action == CONF_NO_CLOUD:
+                return await self._create_entry({CONF_NO_CLOUD: True, CONF_USERNAME: "Tuya Hybrid (Local)"})
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema({
+                vol.Required(CONF_ACTION, default=CONF_SETUP_CLOUD_SHARING): vol.In(CONF_ACTIONS_FIRST_TIME)
+            }),
+        )
+
+    async def async_step_cloud_setup_manual(self, user_input=None):
+        """Handle manual cloud setup."""
         errors = {}
         placeholders = {}
         if user_input is not None:
             if user_input.get(CONF_NO_CLOUD):
-                for i in [CONF_CLIENT_ID, CONF_CLIENT_SECRET, CONF_USER_ID]:
-                    user_input[i] = user_input.get(i, "")
                 return await self._create_entry(user_input)
 
             cloud_api, res = await attempt_cloud_connection(self.hass, user_input)
@@ -366,26 +388,23 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors["base"] = res["reason"]
             placeholders = {"msg": res["msg"]}
 
-        defaults = {}
-        defaults.update(user_input or {})
-
         return self.async_show_form(
-            step_id="user",
-            data_schema=schema_defaults(CLOUD_SETUP_SCHEMA, **defaults),
+            step_id="cloud_setup_manual",
+            data_schema=schema_defaults(CLOUD_SETUP_SCHEMA, **(user_input or {})),
             errors=errors,
             description_placeholders=placeholders,
         )
 
     async def _create_entry(self, user_input):
         """Register new entry."""
-        # if self._async_current_entries():
-        #     return self.async_abort(reason="already_configured")
-
-        await self.async_set_unique_id(user_input.get(CONF_USER_ID))
+        user_id = user_input.get(CONF_USER_ID)
+        if user_id:
+            await self.async_set_unique_id(user_id)
+            self._abort_if_unique_id_configured()
+        
         user_input[CONF_DEVICES] = {}
-
         return self.async_create_entry(
-            title=user_input.get(CONF_USERNAME),
+            title=user_input.get(CONF_USERNAME, "Tuya Hybrid"),
             data=user_input,
         )
 
