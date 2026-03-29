@@ -1,0 +1,100 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Urządzenie zostało już skonfigurowane.",
+            "device_updated": "Konfiguracja urządzenia została zaktualizowana!"
+        },
+        "error": {
+            "authentication_failed": "Błąd uwierzytelniania.\n{msg}",
+            "cannot_connect": "Nie można połączyć się z urządzeniem. Sprawdź adres i spróbuj ponownie.",
+            "device_list_failed": "Nie udało się pobrać listy urządzeń.\n{msg}",
+            "invalid_auth": "Błąd uwierzytelniania urządzenia. Sprawdź Device ID i Local Key.",
+            "unknown": "Wystąpił nieznany błąd. Sprawdź logi po szczegóły.",
+            "entity_already_configured": "Encja o tym ID została już skonfigurowana.",
+            "address_in_use": "Adres używany do wykrywania jest już w użyciu. Upewnij się, że żadna inna aplikacja go nie używa (port TCP 6668).",
+            "discovery_failed": "Coś poszło nie tak podczas wykrywania urządzeń. Sprawdź logi.",
+            "empty_dps": "Połączenie z urządzeniem powiodło się, ale nie znaleziono żadnych punktów danych (DP). Spróbuj ponownie."
+        },
+        "step": {
+            "user": {
+                "title": "Konfiguracja Konta Tuya Hybrid",
+                "description": "Wybierz metodę konfiguracji.",
+                "data": {
+                    "action": "Akcja"
+                }
+            },
+            "cloud_setup_manual": {
+                "title": "Ręczna konfiguracja Cloud API",
+                "description": "Wprowadź dane dostępowe do Tuya Cloud API.",
+                "data": {
+                    "region": "Region serwera API",
+                    "client_id": "Client ID",
+                    "client_secret": "Secret",
+                    "user_id": "User ID",
+                    "user_name": "Nazwa profilu",
+                    "no_cloud": "Nie konfiguruj konta Cloud API"
+                }
+            }
+        }
+    },
+    "options": {
+        "abort": {
+            "already_configured": "Urządzenie zostało już skonfigurowane.",
+            "device_success": "Urządzenie {dev_name} pomyślnie {action}.",
+            "no_entities": "Nie można usunąć wszystkich encji z urządzenia."
+        },
+        "error": {
+            "authentication_failed": "Błąd uwierzytelniania.\n{msg}",
+            "cannot_connect": "Nie można połączyć się z urządzeniem. Sprawdź adres i spróbuj ponownie.",
+            "device_list_failed": "Nie udało się pobrać listy urządzeń.\n{msg}",
+            "invalid_auth": "Błąd uwierzytelniania urządzenia. Sprawdź Device ID i Local Key.",
+            "unknown": "Wystąpił nieznany błąd. Sprawdź logi po szczegóły.",
+            "login_failed": "Logowanie nieudane. Upewnij się, że zeskanowałeś kod QR i potwierdziłeś go w aplikacji."
+        },
+        "step": {
+            "init": {
+                "title": "Konfiguracja Tuya Hybrid",
+                "description": "Wybierz działanie, które chcesz podjąć.",
+                "data": {
+                    "action": "Akcja"
+                }
+            },
+            "cloud_sharing": {
+                "title": "Połącz konto Tuya (Easy Login)",
+                "description": "Wprowadź dowolny identyfikator sesji (np. swoje imię), a następnie kliknij wyślij, aby wygenerować kod QR.",
+                "data": {
+                    "user_code": "Identyfikator sesji"
+                }
+            },
+            "cloud_sharing_qr": {
+                "title": "Zeskanuj Kod QR",
+                "description": "{qr_code}"
+            },
+            "add_device": {
+                "title": "Dodaj nowe urządzenie",
+                "description": "Wybierz jedno z wykrytych urządzeń z chmury lub wybierz `...`, aby dodać ręcznie.",
+                "data": {
+                    "selected_device": "Wykryte urządzenia"
+                }
+            },
+            "configure_device": {
+                "title": "Konfiguracja urządzenia Tuya",
+                "description": "Wypełnij szczegóły urządzenia{for_device}.",
+                "data": {
+                    "friendly_name": "Nazwa",
+                    "host": "Adres IP (Host)",
+                    "device_id": "Device ID",
+                    "local_key": "Local key",
+                    "protocol_version": "Wersja protokołu",
+                    "enable_debug": "Włącz debugowanie",
+                    "scan_interval": "Interwał odświeżania (sekundy)",
+                    "entities": "Encje (odznacz, aby usunąć)",
+                    "add_entities": "Dodaj więcej encji w trybie edycji",
+                    "manual_dps_strings": "Ręczne punkty danych (DP) (oddzielone przecinkami)",
+                    "reset_dpids": "DPID do resetowania (oddzielone przecinkami)"
+                }
+            }
+        }
+    },
+    "title": "Tuya Hybrid"
+}
