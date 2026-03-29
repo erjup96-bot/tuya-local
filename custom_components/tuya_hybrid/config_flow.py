@@ -38,6 +38,7 @@ from .const import (
     CONF_MANUAL_DPS,
     CONF_MODEL,
     CONF_NO_CLOUD,
+    CONF_PRODUCT_KEY,
     CONF_PRODUCT_NAME,
     CONF_PROTOCOL_VERSION,
     CONF_RESET_DPIDS,
@@ -109,24 +110,28 @@ PICK_ENTITY_SCHEMA = vol.Schema(
 )
 
 
-def devices_schema(discovered_devices, cloud_devices_list, add_custom_device=True):
+def devices_schema(discovered_devices, cloud_devices_list, configured_devices=None, add_custom_device=True):
     """Create schema for devices step."""
     devices = {}
-    for dev_id, dev_host in discovered_devices.items():
-        dev_name = dev_id
-        if dev_id in cloud_devices_list.keys():
-            dev_name = cloud_devices_list[dev_id][CONF_NAME]
-        devices[dev_id] = f"{dev_name} ({dev_host})"
+    configured_devices = configured_devices or []
+    
+    # First, add all discovered devices (not yet configured)
+    for dev_id, dev_info in discovered_devices.items():
+        if dev_id not in configured_devices:
+            dev_host = dev_info.get("ip", "unknown")
+            dev_name = dev_id
+            if dev_id in cloud_devices_list:
+                dev_name = cloud_devices_list[dev_id].get(CONF_NAME, dev_id)
+            devices[dev_id] = f"{dev_name} ({dev_host})"
+    
+    # Then, add any devices found in the cloud that were NOT discovered locally and NOT yet configured
+    for dev_id, dev_info in cloud_devices_list.items():
+        if dev_id not in devices and dev_id not in configured_devices:
+            dev_name = dev_info.get(CONF_NAME, dev_id)
+            devices[dev_id] = f"{dev_name} (Cloud only - manual IP needed)"
 
     if add_custom_device:
-        devices.update({CUSTOM_DEVICE: CUSTOM_DEVICE})
-
-    # devices.update(
-    #     {
-    #         ent.data[CONF_DEVICE_ID]: ent.data[CONF_FRIENDLY_NAME]
-    #         for ent in entries
-    #     }
-    # )
+        devices[CUSTOM_DEVICE] = "Manual entry"
     return vol.Schema({vol.Required(SELECTED_DEVICE): vol.In(devices)})
 
 
@@ -514,13 +519,14 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
                 new_data[ATTR_UPDATED_AT] = str(int(time.time() * 1000))
                 self.hass.config_entries.async_update_entry(self._config_entry, data=new_data)
                 
-                return self.async_create_entry(title="Cloud Sharing Linked", data={})
+                return await self.async_step_add_device()
             errors["base"] = "login_failed"
 
+        qr_code_url = self.hass.data[DOMAIN]["sharing"].qr_code_url
         return self.async_show_form(
             step_id="cloud_sharing_qr",
             errors=errors,
-            description_placeholders={"qr_code": "Please scan the QR code in your Tuya/SmartLife app."},
+            description_placeholders={"qr_code": f"Scan QR code in app and confirm. Link: {qr_code_url}"},
         )
 
     async def async_step_add_device(self, user_input=None):
@@ -552,16 +558,16 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
                 _LOGGER.exception("discovery failed: %s", ex)
                 errors["base"] = "discovery_failed"
 
-        devices = {
-            dev_id: dev["ip"]
-            for dev_id, dev in self.discovered_devices.items()
-            if dev["gwId"] not in self.config_entry.data[CONF_DEVICES]
-        }
+        cloud_list = {}
+        if DATA_CLOUD in data and data[DATA_CLOUD]:
+            cloud_list = data[DATA_CLOUD].device_list
+
+        configured = self.config_entry.data.get(CONF_DEVICES, {})
 
         return self.async_show_form(
             step_id="add_device",
             data_schema=devices_schema(
-                devices, self.hass.data[DOMAIN][DATA_CLOUD].device_list
+                self.discovered_devices, cloud_list, list(configured.keys())
             ),
             errors=errors,
         )
@@ -599,10 +605,11 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
             try:
                 self.device_data = user_input.copy()
                 if dev_id is not None:
-                    # self.device_data[CONF_PRODUCT_KEY] = self.devices[
-                    #     self.selected_device
-                    # ]["productKey"]
-                    cloud_devs = self.hass.data[DOMAIN][DATA_CLOUD].device_list
+                    data = self.hass.data.get(DOMAIN, {})
+                    cloud_devs = {}
+                    if DATA_CLOUD in data and data[DATA_CLOUD]:
+                        cloud_devs = data[DATA_CLOUD].device_list
+                    
                     if dev_id in cloud_devs:
                         self.device_data[CONF_MODEL] = cloud_devs[dev_id].get(
                             CONF_PRODUCT_NAME
@@ -678,22 +685,20 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         else:
             defaults[CONF_PROTOCOL_VERSION] = "3.3"
             defaults[CONF_HOST] = ""
-            defaults[CONF_DEVICE_ID] = ""
-            defaults[CONF_LOCAL_KEY] = ""
-            defaults[CONF_FRIENDLY_NAME] = ""
-            if dev_id is not None:
-                # Insert default values from discovery and cloud if present
-                device = self.discovered_devices[dev_id]
-                defaults[CONF_HOST] = device.get("ip")
-                defaults[CONF_DEVICE_ID] = device.get("gwId")
-                defaults[CONF_PROTOCOL_VERSION] = device.get("version")
-                cloud_devs = self.hass.data[DOMAIN][DATA_CLOUD].device_list
-                if dev_id in cloud_devs:
-                    defaults[CONF_LOCAL_KEY] = cloud_devs[dev_id].get(CONF_LOCAL_KEY)
-                    defaults[CONF_FRIENDLY_NAME] = cloud_devs[dev_id].get(CONF_NAME)
+            if dev_id in self.discovered_devices:
+                defaults[CONF_HOST] = self.discovered_devices[dev_id]["ip"]
+            
+            # Pre-fill from Cloud Data if available
+            cloud_devs = self.hass.data[DOMAIN][DATA_CLOUD].device_list
+            if dev_id in cloud_devs:
+                defaults[CONF_LOCAL_KEY] = cloud_devs[dev_id].get(CONF_LOCAL_KEY, "")
+                defaults[CONF_FRIENDLY_NAME] = cloud_devs[dev_id].get(CONF_NAME, "")
+                # Only use cloud IP if local discovery failed to find one
+                if not defaults[CONF_HOST]:
+                    defaults[CONF_HOST] = cloud_devs[dev_id].get("ip", "")
+            
             schema = schema_defaults(DEVICE_SCHEMA, **defaults)
-
-            placeholders = {"for_device": ""}
+            placeholders = {"for_device": f" for device `{dev_id}`"}
 
         return self.async_show_form(
             step_id="configure_device",

@@ -239,6 +239,14 @@ class Cloud:
                 TUYA_RESPONSE_CODE: self.__error_code,
             }
 
+    @property
+    def qr_code_url(self) -> str | None:
+        """Return a URL to the QR code image."""
+        if not self.__qr_code:
+            return None
+        # Standard QR code generator URL using the token
+        return f"https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl={self.__qr_code}&choe=UTF-8"
+
 
 class DeviceListener(SharingDeviceListener):
     """Device update listener."""
