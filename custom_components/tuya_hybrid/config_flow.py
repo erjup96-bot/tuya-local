@@ -352,7 +352,7 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if user_input.get(CONF_NO_CLOUD):
                 for i in [CONF_CLIENT_ID, CONF_CLIENT_SECRET, CONF_USER_ID]:
-                    user_input[i] = ""
+                    user_input[i] = user_input.get(i, "")
                 return await self._create_entry(user_input)
 
             cloud_api, res = await attempt_cloud_connection(self.hass, user_input)
