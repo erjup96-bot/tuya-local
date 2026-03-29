@@ -545,7 +545,7 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="cloud_sharing_qr",
             errors=errors,
-            description_placeholders={"qr_code": f"Scan QR code in app and confirm. Link: {qr_code_url}"},
+            description_placeholders={"qr_code": f"Otwórz ten link w nowej karcie i zeskanuj kod QR w aplikacji Tuya/SmartLife: {qr_code_url}"},
         )
 
     async def async_step_add_device(self, user_input=None):
