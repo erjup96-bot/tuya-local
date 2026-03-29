@@ -1,0 +1,11 @@
+{
+    "name": "Tuya Hybrid",
+    "render_readme": true,
+    "domains": [
+        "tuya_hybrid"
+    ],
+    "iot_class": "local_polling",
+    "codeowners": [
+        "@bartek"
+    ]
+}
