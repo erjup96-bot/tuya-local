@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_DEVICE_ID
 from tuya_sharing import (
     CustomerDevice,
     LoginControl,
@@ -11,7 +12,6 @@ from tuya_sharing import (
 )
 
 from .const import (
-    CONF_DEVICE_ID,
     CONF_ENDPOINT,
     CONF_LOCAL_KEY,
     CONF_TERMINAL_ID,

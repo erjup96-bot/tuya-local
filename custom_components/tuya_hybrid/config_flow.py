@@ -26,7 +26,6 @@ from homeassistant.const import (
 from homeassistant.core import callback
 
 from .cloud_api import TuyaCloudApi
-from .cloud_sharing import Cloud
 from .common import pytuya
 from .const import (
     ATTR_UPDATED_AT,
@@ -481,6 +480,7 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         """Handle Tuya Cloud Sharing (Easy Login)."""
         errors = {}
         if user_input is not None:
+            from .cloud_sharing import Cloud
             user_code = user_input.get(CONF_USER_CODE)
             self.hass.data.setdefault(DOMAIN, {})
             self.hass.data[DOMAIN]["sharing"] = Cloud(self.hass)
