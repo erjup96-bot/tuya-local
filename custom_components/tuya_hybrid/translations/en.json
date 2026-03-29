@@ -53,13 +53,25 @@
                 "description": "Options cannot be edited when configured via YAML."
             },
             "init": {
-                "title": "LocalTuya Configuration",
+                "title": "Tuya Hybrid Configuration",
                 "description": "Please select the desired action.",
                 "data": {
                     "add_device": "Add a new device",
                     "edit_device": "Edit a device",
-                    "setup_cloud": "Reconfigure Cloud API account"
+                    "setup_cloud": "Reconfigure Cloud API (Client ID/Secret)",
+                    "setup_cloud_sharing": "Link Tuya Account (Easy Login via QR Code)"
                 }
+            },
+            "cloud_sharing": {
+                "title": "Link Tuya Account (Easy Login)",
+                "description": "Enter a custom identifier for this session, then click submit to generate a QR code.",
+                "data": {
+                    "user_code": "Session Identifier"
+                }
+            },
+            "cloud_sharing_qr": {
+                "title": "Scan QR Code",
+                "description": "{qr_code}"
             },
             "add_device": {
                 "title": "Add a new device",

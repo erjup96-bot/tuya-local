@@ -17,6 +17,7 @@ TUYA_RESPONSE_MSG = "msg"
 TUYA_RESPONSE_QR_CODE = "qrcode"
 TUYA_RESPONSE_RESULT = "result"
 TUYA_RESPONSE_SUCCESS = "success"
+DATA_DISCOVERY = "discovery"
 DATA_CLOUD = "cloud_data"
 
 # Platforms in this list must support config flows
