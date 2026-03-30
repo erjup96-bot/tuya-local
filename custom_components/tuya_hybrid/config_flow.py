@@ -66,7 +66,15 @@ def _write_diagnostic_error(ex: Exception):
         log_path = os.path.join(os.path.dirname(__file__), "DIAGNOSTICS.log")
         with open(log_path, "a") as f:
             f.write(f"\n--- ERROR AT {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
-            f.write(traceback.format_exc())
+            if ex and str(ex) != "MODULE LOADED - DIAGNOSTICS ACTIVE":
+                f.write(f"Exception: {type(ex).__name__}: {str(ex)}\n")
+            
+            # format_exc() only works if an exception is currently being handled
+            exc_info = traceback.format_exc()
+            if exc_info.strip() != "NoneType: None":
+                f.write(exc_info)
+            elif ex:
+                f.write("".join(traceback.format_exception(type(ex), ex, ex.__traceback__)))
             f.write("\n------------------------------\n")
     except:
         pass

@@ -25,7 +25,31 @@
                     "client_secret": "Secret",
                     "user_id": "User ID",
                     "user_name": "Username",
-                    "no_cloud": "Do not configure a Cloud API account"
+                    "no_cloud": "Do not configure a Cloud API account",
+                    "action": "Action"
+                }
+            },
+            "cloud_sharing": {
+                "title": "Link Tuya Account (Easy Login)",
+                "description": "Enter a custom identifier for this session, then click submit to generate a QR code.",
+                "data": {
+                    "user_code": "Session Identifier"
+                }
+            },
+            "cloud_sharing_qr": {
+                "title": "Scan QR Code",
+                "description": "{qr_code}\n\nScan the QR code above in the Tuya Smart or Smart Life app (go to 'Me' tab -> scan icon in the top right corner) to authorize the connection."
+            },
+            "cloud_setup_manual": {
+                "title": "Cloud API account configuration",
+                "description": "Input the credentials for Tuya Cloud API.",
+                "data": {
+                    "region": "API server region",
+                    "client_id": "Client ID",
+                    "client_secret": "Secret",
+                    "user_id": "User ID",
+                    "user_name": "Username",
+                    "no_cloud": "Do not configure Cloud API account"
                 }
             }
         }

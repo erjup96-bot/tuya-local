@@ -23,6 +23,17 @@
                     "action": "Akcja"
                 }
             },
+            "cloud_sharing": {
+                "title": "Połącz konto Tuya (Easy Login)",
+                "description": "Wprowadź dowolny identyfikator sesji (np. swoje imię), a następnie kliknij wyślij, aby wygenerować kod QR.",
+                "data": {
+                    "user_code": "Identyfikator sesji"
+                }
+            },
+            "cloud_sharing_qr": {
+                "title": "Zeskanuj Kod QR",
+                "description": "{qr_code}\n\nZeskanuj powyższy kod QR w aplikacji Tuya Smart lub Smart Life (zakładka 'Ja' -> ikona skanera w prawym górnym rogu), aby autoryzować połączenie."
+            },
             "cloud_setup_manual": {
                 "title": "Ręczna konfiguracja Cloud API",
                 "description": "Wprowadź dane dostępowe do Tuya Cloud API.",
