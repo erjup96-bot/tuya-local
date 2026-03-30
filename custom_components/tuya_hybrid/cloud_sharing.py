@@ -263,7 +263,6 @@ class Cloud:
         if not self.__qr_code:
             return ""
         # The QR code needs a prefix for the Tuya app to recognize it correctly.
-        # We try to use the schema from constants or fallback to tuyaSmart.
         qr_content = self.__qr_code
         if not any(qr_content.startswith(p) for p in ["tuyaSmart--", "smartlife--", "haauthorize--"]):
             qr_content = f"{TUYA_SCHEMA}--qrLogin?token={qr_content}"
