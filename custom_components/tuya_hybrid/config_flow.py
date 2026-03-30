@@ -786,6 +786,7 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
                 cloud_devs = self.hass.data[DOMAIN][DATA_CLOUD].device_list
 
             if dev_id in cloud_devs:
+                defaults[CONF_DEVICE_ID] = dev_id
                 defaults[CONF_LOCAL_KEY] = cloud_devs[dev_id].get(CONF_LOCAL_KEY, "")
                 defaults[CONF_FRIENDLY_NAME] = cloud_devs[dev_id].get("name", "")
                 
