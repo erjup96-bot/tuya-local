@@ -1,4 +1,5 @@
 import logging
+import urllib.parse
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -124,14 +125,22 @@ class Cloud:
     async def async_get_devices(self) -> dict[str, Any]:
         """Get all devices associated with the account."""
         token_listener = TokenListener(self.__hass)
-        manager = Manager(
-            TUYA_CLIENT_ID,
-            self.__authentication["user_code"],
-            self.__authentication["terminal_id"],
-            self.__authentication["endpoint"],
-            self.__authentication["token_info"],
-            token_listener,
-        )
+        if not self.__authentication:
+            _LOGGER.error("Cannot get devices: Not authenticated")
+            return {}
+
+        try:
+            manager = Manager(
+                TUYA_CLIENT_ID,
+                self.__authentication.get("user_code"),
+                self.__authentication.get("terminal_id"),
+                self.__authentication.get("endpoint"),
+                self.__authentication.get("token_info"),
+                token_listener,
+            )
+        except (KeyError, TypeError) as ex:
+            _LOGGER.error("Authentication data is incomplete: %s", ex)
+            return {}
 
         listener = DeviceListener(self.__hass, manager)
         manager.add_device_listener(listener)
@@ -189,14 +198,23 @@ class Cloud:
     async def async_get_datamodel(self, device_id) -> dict[str, Any] | None:
         """Get the data model for the specified device (QueryThingsDataModel)."""
         token_listener = TokenListener(self.__hass)
-        manager = Manager(
-            TUYA_CLIENT_ID,
-            self.__authentication["user_code"],
-            self.__authentication["terminal_id"],
-            self.__authentication["endpoint"],
-            self.__authentication["token_info"],
-            token_listener,
-        )
+        if not self.__authentication:
+            _LOGGER.error("Cannot get datamodel: Not authenticated")
+            return None
+
+        try:
+            manager = Manager(
+                TUYA_CLIENT_ID,
+                self.__authentication.get("user_code"),
+                self.__authentication.get("terminal_id"),
+                self.__authentication.get("endpoint"),
+                self.__authentication.get("token_info"),
+                token_listener,
+            )
+        except (KeyError, TypeError) as ex:
+            _LOGGER.error("Authentication data is incomplete: %s", ex)
+            return None
+
         response = await self.__hass.async_add_executor_job(
             manager.customer_api.get,
             f"/v1.0/m/life/devices/{device_id}/status",
@@ -244,7 +262,14 @@ class Cloud:
         """Return QR code URL."""
         if not self.__qr_code:
             return ""
-        return f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={self.__qr_code}"
+        # The QR code needs a prefix for the Tuya app to recognize it correctly.
+        # We try to use the schema from constants or fallback to tuyaSmart.
+        qr_content = self.__qr_code
+        if not any(qr_content.startswith(p) for p in ["tuyaSmart--", "smartlife--", "haauthorize--"]):
+            qr_content = f"{TUYA_SCHEMA}--qrLogin?token={qr_content}"
+        
+        encoded_data = urllib.parse.quote(qr_content)
+        return f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={encoded_data}"
 
 
 class DeviceListener(SharingDeviceListener):

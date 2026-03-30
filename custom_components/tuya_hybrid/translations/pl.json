@@ -68,7 +68,7 @@
             },
             "cloud_sharing_qr": {
                 "title": "Zeskanuj Kod QR",
-                "description": "{qr_code}"
+                "description": "{qr_code}\n\nZeskanuj powyższy kod QR w aplikacji Tuya Smart lub Smart Life (zakładka 'Ja' -> ikona skanera w prawym górnym rogu), aby autoryzować połączenie."
             },
             "add_device": {
                 "title": "Dodaj nowe urządzenie",

@@ -58,6 +58,21 @@ _LOGGER = logging.getLogger(__name__)
 
 ENTRIES_VERSION = 2
 
+def _write_diagnostic_error(ex: Exception):
+    """Write internal diagnostics log for the agent to see."""
+    try:
+        import traceback
+        import os
+        log_path = os.path.join(os.path.dirname(__file__), "DIAGNOSTICS.log")
+        with open(log_path, "a") as f:
+            f.write(f"\n--- ERROR AT {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+            f.write(traceback.format_exc())
+            f.write("\n------------------------------\n")
+    except:
+        pass
+
+_write_diagnostic_error(Exception("MODULE LOADED - DIAGNOSTICS ACTIVE"))
+
 PLATFORM_TO_ADD = "platform_to_add"
 NO_ADDITIONAL_ENTITIES = "no_additional_entities"
 SELECTED_DEVICE = "selected_device"
@@ -357,20 +372,27 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
+        errors = {}
         if user_input is not None:
-            action = user_input.get(CONF_ACTION)
-            if action == CONF_SETUP_CLOUD_SHARING:
-                return await self.async_step_cloud_sharing()
-            if action == CONF_SETUP_CLOUD:
-                return await self.async_step_cloud_setup_manual()
-            if action == CONF_NO_CLOUD:
-                return await self._create_entry({CONF_NO_CLOUD: True, CONF_USERNAME: "Tuya Hybrid (Local)"})
+            try:
+                action = user_input.get(CONF_ACTION)
+                if action == CONF_SETUP_CLOUD_SHARING:
+                    return await self.async_step_cloud_sharing()
+                if action == CONF_SETUP_CLOUD:
+                    return await self.async_step_cloud_setup_manual()
+                if action == CONF_NO_CLOUD:
+                    return await self._create_entry({CONF_NO_CLOUD: True, CONF_USERNAME: "Tuya Hybrid (Local)"})
+            except Exception as ex:
+                _LOGGER.exception("Error in user step: %s", ex)
+                _write_diagnostic_error(ex)
+                errors["base"] = "unknown"
 
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required(CONF_ACTION, default=CONF_SETUP_CLOUD_SHARING): vol.In(CONF_ACTIONS_FIRST_TIME)
             }),
+            errors=errors,
         )
 
     async def async_step_cloud_setup_manual(self, user_input=None):
@@ -406,6 +428,69 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(
             title=user_input.get(CONF_USERNAME, "Tuya Hybrid"),
             data=user_input,
+        )
+
+    async def async_step_cloud_sharing(self, user_input=None):
+        """Handle Tuya Cloud Sharing (Easy Login)."""
+        errors = {}
+        if user_input is not None:
+            try:
+                from .cloud_sharing import Cloud
+                user_code = user_input.get(CONF_USER_CODE)
+                self.hass.data.setdefault(DOMAIN, {})
+                self.hass.data[DOMAIN]["sharing"] = Cloud(self.hass)
+                qr_code = await self.hass.data[DOMAIN]["sharing"].async_get_qr_code(user_code)
+                if qr_code:
+                    return await self.async_step_cloud_sharing_qr()
+                errors["base"] = "qr_code_failed"
+            except Exception as ex:
+                _LOGGER.exception("Error during cloud sharing setup: %s", ex)
+                _write_diagnostic_error(ex)
+                errors["base"] = "unknown"
+
+        return self.async_show_form(
+            step_id="cloud_sharing",
+            data_schema=vol.Schema({vol.Required(CONF_USER_CODE): str}),
+            errors=errors,
+        )
+
+    async def async_step_cloud_sharing_qr(self, user_input=None):
+        """Handle QR code scan confirmation."""
+        errors = {}
+        if user_input is not None:
+            try:
+                success = await self.hass.data[DOMAIN]["sharing"].async_login()
+                if success:
+                    devices = await self.hass.data[DOMAIN]["sharing"].async_get_devices()
+                    # Store devices in DATA_CLOUD format
+                    class MockCloudApi:
+                        def __init__(self, devices):
+                            self.device_list = devices
+                    self.hass.data[DOMAIN][DATA_CLOUD] = MockCloudApi(devices)
+                    
+                    # If we are in ConfigFlow (no config_entry yet), create the entry
+                    if not hasattr(self, "config_entry") or self.config_entry is None:
+                        # Get user info from sharing to fill entry
+                        # For now use generic
+                        return await self._create_entry({
+                            CONF_NO_CLOUD: False, # Flag to indicate we used sharing/cloud
+                            CONF_USERNAME: "Tuya Hybrid",
+                            ATTR_UPDATED_AT: str(int(time.time() * 1000)),
+                        })
+                    
+                    # If we are in OptionsFlow, just proceed to add device
+                    return await self.async_step_add_device()
+                errors["base"] = "login_failed"
+            except Exception as ex:
+                _LOGGER.exception("Error during cloud login: %s", ex)
+                _write_diagnostic_error(ex)
+                errors["base"] = "unknown"
+
+        qr_code_url = self.hass.data[DOMAIN]["sharing"].qr_code_url
+        return self.async_show_form(
+            step_id="cloud_sharing_qr",
+            errors=errors,
+            description_placeholders={"qr_code": f"![QR Code]({qr_code_url})"},
         )
 
     async def async_step_import(self, user_input):
@@ -501,52 +586,22 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_cloud_sharing(self, user_input=None):
-        """Handle Tuya Cloud Sharing (Easy Login)."""
-        errors = {}
-        if user_input is not None:
-            from .cloud_sharing import Cloud
-            user_code = user_input.get(CONF_USER_CODE)
-            self.hass.data.setdefault(DOMAIN, {})
-            self.hass.data[DOMAIN]["sharing"] = Cloud(self.hass)
-            qr_code = await self.hass.data[DOMAIN]["sharing"].async_get_qr_code(user_code)
-            if qr_code:
-                return await self.async_step_cloud_sharing_qr()
-            errors["base"] = "qr_code_failed"
-
-        return self.async_show_form(
-            step_id="cloud_sharing",
-            data_schema=vol.Schema({vol.Required(CONF_USER_CODE): str}),
-            errors=errors,
-        )
+        """Handle Tuya Cloud Sharing (Easy Login) for Options Flow."""
+        # ConfigFlow and OptionsFlow can share these methods if they have same names
+        # But we need to be careful with 'self' context.
+        # Since I added them to LocaltuyaConfigFlow, I can just call them if I make sure 
+        # LocalTuyaOptionsFlowHandler knows where they are.
+        # Actually, it's easier to just have them here too but they are very similar.
+        
+        # To avoid confusion, I'll just keep the existing ones in OptionsFlow but they'll 
+        # be redundant. The Error happened because async_step_user called a non-existent method.
+        # Now it exists in LocaltuyaConfigFlow.
+        
+        return await LocaltuyaConfigFlow.async_step_cloud_sharing(self, user_input)
 
     async def async_step_cloud_sharing_qr(self, user_input=None):
-        """Handle QR code scan confirmation."""
-        errors = {}
-        if user_input is not None:
-            success = await self.hass.data[DOMAIN]["sharing"].async_login()
-            if success:
-                devices = await self.hass.data[DOMAIN]["sharing"].async_get_devices()
-                # Store devices in DATA_CLOUD format that localtuya expects
-                class MockCloudApi:
-                    def __init__(self, devices):
-                        self.device_list = devices
-                self.hass.data[DOMAIN][DATA_CLOUD] = MockCloudApi(devices)
-                
-                # Update config entry data with a flag or dummy values to skip old cloud setup
-                new_data = self._config_entry.data.copy()
-                new_data[CONF_NO_CLOUD] = True
-                new_data[ATTR_UPDATED_AT] = str(int(time.time() * 1000))
-                self.hass.config_entries.async_update_entry(self._config_entry, data=new_data)
-                
-                return await self.async_step_add_device()
-            errors["base"] = "login_failed"
-
-        qr_code_url = self.hass.data[DOMAIN]["sharing"].qr_code_url
-        return self.async_show_form(
-            step_id="cloud_sharing_qr",
-            errors=errors,
-            description_placeholders={"qr_code": f"Otwórz ten link w nowej karcie i zeskanuj kod QR w aplikacji Tuya/SmartLife: {qr_code_url}"},
-        )
+        """Handle QR code scan confirmation for Options Flow."""
+        return await LocaltuyaConfigFlow.async_step_cloud_sharing_qr(self, user_input)
 
     async def async_step_add_device(self, user_input=None):
         """Handle adding a new device."""
@@ -608,10 +663,15 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         for dev_id, configured_dev in self.config_entry.data[CONF_DEVICES].items():
             devices[dev_id] = configured_dev[CONF_HOST]
 
+        cloud_list = {}
+        data = self.hass.data.get(DOMAIN, {})
+        if DATA_CLOUD in data and data[DATA_CLOUD]:
+            cloud_list = data[DATA_CLOUD].device_list
+
         return self.async_show_form(
             step_id="edit_device",
             data_schema=devices_schema(
-                devices, self.hass.data[DOMAIN][DATA_CLOUD].device_list, False
+                devices, cloud_list, False
             ),
             errors=errors,
         )
@@ -686,17 +746,19 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         if self.editing_device:
             # If selected device exists as a config entry, load config from it
             defaults = self.config_entry.data[CONF_DEVICES][dev_id].copy()
-            cloud_devs = self.hass.data[DOMAIN][DATA_CLOUD].device_list
+            cloud_devs = {}
+            if DOMAIN in self.hass.data and DATA_CLOUD in self.hass.data[DOMAIN] and self.hass.data[DOMAIN][DATA_CLOUD]:
+                cloud_devs = self.hass.data[DOMAIN][DATA_CLOUD].device_list
             placeholders = {"for_device": f" for device `{dev_id}`"}
             if dev_id in cloud_devs:
                 cloud_local_key = cloud_devs[dev_id].get(CONF_LOCAL_KEY)
-                if defaults[CONF_LOCAL_KEY] != cloud_local_key:
+                if defaults.get(CONF_LOCAL_KEY) != cloud_local_key and cloud_local_key:
                     _LOGGER.info(
                         "New local_key detected: new %s vs old %s",
                         cloud_local_key,
-                        defaults[CONF_LOCAL_KEY],
+                        defaults.get(CONF_LOCAL_KEY),
                     )
-                    defaults[CONF_LOCAL_KEY] = cloud_devs[dev_id].get(CONF_LOCAL_KEY)
+                    defaults[CONF_LOCAL_KEY] = cloud_local_key
                     note = "\nNOTE: a new local_key has been retrieved using cloud API"
                     placeholders = {"for_device": f" for device `{dev_id}`.{note}"}
             defaults[CONF_ENABLE_ADD_ENTITIES] = False
@@ -704,15 +766,22 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         else:
             defaults[CONF_PROTOCOL_VERSION] = "3.3"
             defaults[CONF_HOST] = ""
+            
+            # Pre-fill from local discovery
             if dev_id in self.discovered_devices:
-                defaults[CONF_HOST] = self.discovered_devices[dev_id]["ip"]
+                defaults[CONF_HOST] = self.discovered_devices[dev_id].get("ip", "")
+                defaults[CONF_PROTOCOL_VERSION] = self.discovered_devices[dev_id].get("version", "3.3")
             
             # Pre-fill from Cloud Data if available
-            cloud_devs = self.hass.data[DOMAIN][DATA_CLOUD].device_list
+            cloud_devs = {}
+            if DOMAIN in self.hass.data and DATA_CLOUD in self.hass.data[DOMAIN] and self.hass.data[DOMAIN][DATA_CLOUD]:
+                cloud_devs = self.hass.data[DOMAIN][DATA_CLOUD].device_list
+
             if dev_id in cloud_devs:
                 defaults[CONF_LOCAL_KEY] = cloud_devs[dev_id].get(CONF_LOCAL_KEY, "")
-                defaults[CONF_FRIENDLY_NAME] = cloud_devs[dev_id].get(CONF_NAME, "")
-                # Only use cloud IP if local discovery failed to find one
+                defaults[CONF_FRIENDLY_NAME] = cloud_devs[dev_id].get("name", "")
+                
+                # Use cloud IP if local discovery failed to find one
                 if not defaults[CONF_HOST]:
                     defaults[CONF_HOST] = cloud_devs[dev_id].get("ip", "")
             

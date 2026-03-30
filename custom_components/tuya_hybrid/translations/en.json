@@ -71,7 +71,7 @@
             },
             "cloud_sharing_qr": {
                 "title": "Scan QR Code",
-                "description": "{qr_code}"
+                "description": "{qr_code}\n\nScan the QR code above in the Tuya Smart or Smart Life app (go to 'Me' tab -> scan icon in the top right corner) to authorize the connection."
             },
             "add_device": {
                 "title": "Add a new device",
