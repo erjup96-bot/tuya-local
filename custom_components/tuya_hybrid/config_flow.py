@@ -58,28 +58,6 @@ _LOGGER = logging.getLogger(__name__)
 
 ENTRIES_VERSION = 2
 
-def _write_diagnostic_error(ex: Exception):
-    """Write internal diagnostics log for the agent to see."""
-    try:
-        import traceback
-        import os
-        log_path = os.path.join(os.path.dirname(__file__), "DIAGNOSTICS.log")
-        with open(log_path, "a") as f:
-            f.write(f"\n--- ERROR AT {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
-            if ex and str(ex) != "MODULE LOADED - DIAGNOSTICS ACTIVE":
-                f.write(f"Exception: {type(ex).__name__}: {str(ex)}\n")
-            
-            # format_exc() only works if an exception is currently being handled
-            exc_info = traceback.format_exc()
-            if exc_info.strip() != "NoneType: None":
-                f.write(exc_info)
-            elif ex:
-                f.write("".join(traceback.format_exception(type(ex), ex, ex.__traceback__)))
-            f.write("\n------------------------------\n")
-    except:
-        pass
-
-_write_diagnostic_error(Exception("MODULE LOADED - DIAGNOSTICS ACTIVE"))
 
 PLATFORM_TO_ADD = "platform_to_add"
 NO_ADDITIONAL_ENTITIES = "no_additional_entities"
@@ -267,7 +245,6 @@ async def _generate_auto_import_devices(hass, cloud_sharing, cloud_devs, existin
             new_devices += 1
         except Exception as ex:
             _LOGGER.error("Failed to auto-import device %s: %s", dev_id, ex)
-            _write_diagnostic_error(ex)
 
     return configured, new_devices
 
@@ -500,7 +477,6 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return await self._create_entry({CONF_NO_CLOUD: True, CONF_USERNAME: "Tuya Hybrid (Local)"})
             except Exception as ex:
                 _LOGGER.exception("Error in user step: %s", ex)
-                _write_diagnostic_error(ex)
                 errors["base"] = "unknown"
 
         return self.async_show_form(
@@ -548,7 +524,6 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_cloud_sharing(self, user_input=None):
         """Handle Tuya Cloud Sharing (Easy Login)."""
-        _LOGGER.debug("DEBUG: async_step_cloud_sharing called with user_input: %s, self type: %s", user_input, type(self))
         errors = {}
         if user_input is not None:
             try:
@@ -562,7 +537,6 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "qr_code_failed"
             except Exception as ex:
                 _LOGGER.exception("Error during cloud sharing setup: %s", ex)
-                _write_diagnostic_error(ex)
                 errors["base"] = "unknown"
 
         return self.async_show_form(
@@ -573,7 +547,6 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_cloud_sharing_qr(self, user_input=None):
         """Handle QR code scan confirmation."""
-        _LOGGER.debug("DEBUG: async_step_cloud_sharing_qr called with user_input: %s", user_input)
         errors = {}
         if user_input is not None:
             try:
@@ -601,7 +574,6 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "login_failed"
             except Exception as ex:
                 _LOGGER.exception("Error during cloud login: %s", ex)
-                _write_diagnostic_error(ex)
                 errors["base"] = "unknown"
 
         qr_code_url = self.hass.data[DOMAIN]["sharing"].qr_code_url
@@ -613,7 +585,6 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_auto_import(self, user_input=None):
         """Automatically import all devices from cloud in ConfigFlow."""
-        _LOGGER.debug("DEBUG: ConfigFlow async_step_auto_import called with user_input: %s", user_input)
         if user_input is not None:
             if user_input.get("do_import"):
                 data = self.hass.data.get(DOMAIN, {})
@@ -673,14 +644,12 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         _LOGGER.debug("DEBUG: OptionsFlow async_step_init called with user_input: %s", user_input)
         # device_id = self.config_entry.data[CONF_DEVICE_ID]
         if user_input is not None:
-            _LOGGER.debug("DEBUG: user_input action: %s, CONF_AUTO_IMPORT: %s", user_input.get(CONF_ACTION), CONF_AUTO_IMPORT)
             if user_input.get(CONF_ACTION) == CONF_SETUP_CLOUD:
                 return await self.async_step_cloud_setup()
             if user_input.get(CONF_ACTION) == CONF_SETUP_CLOUD_SHARING:
                 self._auto_import_after_login = False
                 return await self.async_step_cloud_sharing()
             if str(user_input.get(CONF_ACTION)) == "auto_import":
-                _LOGGER.debug("DEBUG: MATCHED auto_import, redirecting to cloud_sharing")
                 self._auto_import_after_login = True
                 return await self.async_step_cloud_sharing()
             if user_input.get(CONF_ACTION) == CONF_ADD_DEVICE:
@@ -793,7 +762,7 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         devices_count = len(cloud_data.device_list) if cloud_data else 0
         return self.async_show_form(
             step_id="auto_import_options",
-            description_placeholders={"count": f"OPTIONS {str(devices_count)}"},
+            description_placeholders={"count": str(devices_count)},
         )
 
     async def async_step_add_device(self, user_input=None):
