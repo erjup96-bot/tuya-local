@@ -220,6 +220,8 @@ class Cloud:
             f"/v1.0/m/life/devices/{device_id}/status",
         )
         _LOGGER.debug("Datamodel response: %s", response)
+        if not response or not isinstance(response, dict):
+            return None
         if response.get("result"):
             response = response["result"]
         transform = []

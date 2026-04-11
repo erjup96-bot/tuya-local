@@ -167,6 +167,45 @@ def devices_schema(discovered_devices, cloud_devices_list, configured_devices=No
     return vol.Schema({vol.Required(SELECTED_DEVICE): vol.In(devices)})
 
 
+async def _detect_entities_from_datamodel(cloud_sharing, dev_id):
+    """Heuristic logic to detect entities from Tuya datamodel."""
+    entities = []
+    dps_strings = []
+    datamodel = await cloud_sharing.async_get_datamodel(dev_id)
+    if datamodel:
+        for dp in datamodel:
+            dp_id = dp["id"]
+            dp_name = dp["name"]
+            dp_type = dp["type"]
+            dps_strings.append(f"{dp_id} ({dp_name})")
+            
+            platform = "sensor"
+            dp_name_lower = str(dp_name).lower()
+            
+            if dp_type == "Boolean":
+                if any(sub in dp_name_lower for sub in ["door", "window", "contact", "water", "leak", "motion", "presence", "pir", "tamper", "alarm", "fault", "state"]):
+                    platform = "binary_sensor"
+                elif any(sub in dp_name_lower for sub in ["light", "led", "lamp"]):
+                    platform = "light"
+                else:
+                    platform = "switch"
+            elif dp_type == "Enum":
+                if any(sub in dp_name_lower for sub in ["mode", "status", "state"]):
+                    platform = "sensor"
+            elif dp_type in ["Integer", "Value"]:
+                if any(sub in dp_name_lower for sub in ["temp", "humid", "volt", "current", "power", "batt", "speed", "bright", "color", "time", "count", "value"]):
+                    platform = "sensor"
+                else:
+                    platform = "number"
+            
+            entities.append({
+                CONF_ID: int(dp_id),
+                CONF_FRIENDLY_NAME: str(dp_name).replace("_", " ").title(),
+                CONF_PLATFORM: platform,
+            })
+    return entities, dps_strings
+
+
 async def _generate_auto_import_devices(hass, cloud_sharing, cloud_devs, existing_devices=None):
     if existing_devices is None:
         existing_devices = {}
@@ -178,63 +217,35 @@ async def _generate_auto_import_devices(hass, cloud_sharing, cloud_devs, existin
         if dev_id in configured:
             continue
             
-        entities = []
-        dps_strings = []
-        if cloud_sharing:
-            datamodel = await cloud_sharing.async_get_datamodel(dev_id)
-            if datamodel:
-                for dp in datamodel:
-                    dp_id = dp["id"]
-                    dp_name = dp["name"]
-                    dp_type = dp["type"]
-                    dps_strings.append(f"{dp_id} ({dp_name})")
-                    
-                    platform = "sensor"
-                    dp_name_lower = str(dp_name).lower()
-                    
-                    if dp_type == "Boolean":
-                        if any(sub in dp_name_lower for sub in ["door", "window", "contact", "water", "leak", "motion", "presence", "pir", "tamper", "alarm", "fault", "state"]):
-                            platform = "binary_sensor"
-                        elif any(sub in dp_name_lower for sub in ["light", "led", "lamp"]):
-                            platform = "light"
-                        else:
-                            platform = "switch"
-                    elif dp_type == "Enum":
-                        if any(sub in dp_name_lower for sub in ["mode", "status", "state"]):
-                            platform = "sensor"
-                    elif dp_type in ["Integer", "Value"]:
-                        if any(sub in dp_name_lower for sub in ["temp", "humid", "volt", "current", "power", "batt", "speed", "bright", "color", "time", "count", "value"]):
-                            platform = "sensor"
-                        else:
-                            platform = "number"
-                    
-                    entities.append({
-                        CONF_ID: int(dp_id),
-                        CONF_FRIENDLY_NAME: str(dp_name).replace("_", " ").title(),
-                        CONF_PLATFORM: platform,
-                    })
-        
-        # If no entities found, fallback
-        if not entities:
-            # Maybe add a default switch but only if we know nothing
-            entities.append({
-                CONF_ID: 1,
-                CONF_FRIENDLY_NAME: "Switch 1",
-                CONF_PLATFORM: "switch",
-            })
-            dps_strings = ["1 (Auto-added)"]
+        try:
+            entities = []
+            dps_strings = []
+            if cloud_sharing:
+                entities, dps_strings = await _detect_entities_from_datamodel(cloud_sharing, dev_id)
+            
+            # If no entities found, fallback
+            if not entities:
+                entities.append({
+                    CONF_ID: 1,
+                    CONF_FRIENDLY_NAME: "Switch 1",
+                    CONF_PLATFORM: "switch",
+                })
+                dps_strings = ["1 (Auto-added)"]
 
-        dev_config = {
-            CONF_FRIENDLY_NAME: dev_info.get("name", f"Tuya {dev_id}"),
-            CONF_HOST: dev_info.get("ip", ""),
-            CONF_DEVICE_ID: dev_id,
-            CONF_LOCAL_KEY: dev_info.get(CONF_LOCAL_KEY, ""),
-            CONF_PROTOCOL_VERSION: "3.3",
-            CONF_ENTITIES: entities,
-            CONF_DPS_STRINGS: dps_strings,
-        }
-        configured[dev_id] = dev_config
-        new_devices += 1
+            dev_config = {
+                CONF_FRIENDLY_NAME: dev_info.get("name", f"Tuya {dev_id}"),
+                CONF_HOST: dev_info.get("ip", ""),
+                CONF_DEVICE_ID: dev_id,
+                CONF_LOCAL_KEY: dev_info.get(CONF_LOCAL_KEY, ""),
+                CONF_PROTOCOL_VERSION: "3.3",
+                CONF_ENTITIES: entities,
+                CONF_DPS_STRINGS: dps_strings,
+            }
+            configured[dev_id] = dev_config
+            new_devices += 1
+        except Exception as ex:
+            _LOGGER.error("Failed to auto-import device %s: %s", dev_id, ex)
+            _write_diagnostic_error(ex)
 
     return configured, new_devices
 
@@ -875,6 +886,24 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
                         return await self.async_step_configure_entity()
 
                 self.dps_strings = await validate_input(self.hass, user_input)
+                
+                # AUTOMATION: Try to detect entities automatically and skip manual steps 
+                # if cloud sharing is available.
+                data = self.hass.data.get(DOMAIN, {})
+                cloud_sharing = data.get("sharing")
+                if cloud_sharing and self.selected_device:
+                    try:
+                        detected_entities, dps_strings = await _detect_entities_from_datamodel(
+                            cloud_sharing, self.selected_device
+                        )
+                        if detected_entities:
+                            self.entities = detected_entities
+                            self.dps_strings = dps_strings
+                            # Jump straight to adding additional entities check (or finish)
+                            return await self.async_step_pick_entity_type({NO_ADDITIONAL_ENTITIES: True})
+                    except Exception as ex:
+                        _LOGGER.warning("Auto detection failed during single device setup: %s", ex)
+
                 return await self.async_step_pick_entity_type()
             except CannotConnect:
                 errors["base"] = "cannot_connect"
