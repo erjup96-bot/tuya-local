@@ -87,9 +87,12 @@ SELECTED_DEVICE = "selected_device"
 
 CUSTOM_DEVICE = "..."
 
+CONF_AUTO_IMPORT = "auto_import"
+
 CONF_ACTIONS = {
     CONF_ADD_DEVICE: "Add a new device",
     CONF_EDIT_DEVICE: "Edit a device",
+    CONF_AUTO_IMPORT: "Automatically add all discovered cloud devices",
     CONF_SETUP_CLOUD: "Reconfigure Cloud API (Client ID/Secret)",
     CONF_SETUP_CLOUD_SHARING: "Link Tuya Account (Easy Login via QR Code)",
 }
@@ -162,6 +165,78 @@ def devices_schema(discovered_devices, cloud_devices_list, configured_devices=No
     if add_custom_device:
         devices[CUSTOM_DEVICE] = "Manual entry"
     return vol.Schema({vol.Required(SELECTED_DEVICE): vol.In(devices)})
+
+
+async def _generate_auto_import_devices(hass, cloud_sharing, cloud_devs, existing_devices=None):
+    if existing_devices is None:
+        existing_devices = {}
+    
+    configured = existing_devices.copy()
+    new_devices = 0
+    
+    for dev_id, dev_info in cloud_devs.items():
+        if dev_id in configured:
+            continue
+            
+        entities = []
+        dps_strings = []
+        if cloud_sharing:
+            datamodel = await cloud_sharing.async_get_datamodel(dev_id)
+            if datamodel:
+                for dp in datamodel:
+                    dp_id = dp["id"]
+                    dp_name = dp["name"]
+                    dp_type = dp["type"]
+                    dps_strings.append(f"{dp_id} ({dp_name})")
+                    
+                    platform = "sensor"
+                    dp_name_lower = str(dp_name).lower()
+                    
+                    if dp_type == "Boolean":
+                        if any(sub in dp_name_lower for sub in ["door", "window", "contact", "water", "leak", "motion", "presence", "pir", "tamper", "alarm", "fault", "state"]):
+                            platform = "binary_sensor"
+                        elif any(sub in dp_name_lower for sub in ["light", "led", "lamp"]):
+                            platform = "light"
+                        else:
+                            platform = "switch"
+                    elif dp_type == "Enum":
+                        if any(sub in dp_name_lower for sub in ["mode", "status", "state"]):
+                            platform = "sensor"
+                    elif dp_type in ["Integer", "Value"]:
+                        if any(sub in dp_name_lower for sub in ["temp", "humid", "volt", "current", "power", "batt", "speed", "bright", "color", "time", "count", "value"]):
+                            platform = "sensor"
+                        else:
+                            platform = "number"
+                    
+                    entities.append({
+                        CONF_ID: int(dp_id),
+                        CONF_FRIENDLY_NAME: str(dp_name).replace("_", " ").title(),
+                        CONF_PLATFORM: platform,
+                    })
+        
+        # If no entities found, fallback
+        if not entities:
+            # Maybe add a default switch but only if we know nothing
+            entities.append({
+                CONF_ID: 1,
+                CONF_FRIENDLY_NAME: "Switch 1",
+                CONF_PLATFORM: "switch",
+            })
+            dps_strings = ["1 (Auto-added)"]
+
+        dev_config = {
+            CONF_FRIENDLY_NAME: dev_info.get("name", f"Tuya {dev_id}"),
+            CONF_HOST: dev_info.get("ip", ""),
+            CONF_DEVICE_ID: dev_id,
+            CONF_LOCAL_KEY: dev_info.get(CONF_LOCAL_KEY, ""),
+            CONF_PROTOCOL_VERSION: "3.3",
+            CONF_ENTITIES: entities,
+            CONF_DPS_STRINGS: dps_strings,
+        }
+        configured[dev_id] = dev_config
+        new_devices += 1
+
+    return configured, new_devices
 
 
 def options_schema(entities):
@@ -432,7 +507,7 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(user_id)
             self._abort_if_unique_id_configured()
         
-        user_input[CONF_DEVICES] = {}
+        user_input.setdefault(CONF_DEVICES, {})
         return self.async_create_entry(
             title=user_input.get(CONF_USERNAME, "Tuya Hybrid"),
             data=user_input,
@@ -476,15 +551,9 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             self.device_list = devices
                     self.hass.data[DOMAIN][DATA_CLOUD] = MockCloudApi(devices)
                     
-                    # If we are in ConfigFlow (no config_entry yet), create the entry
+                    # If we are in ConfigFlow (no config_entry yet), ask if they want to import existing devices
                     if not hasattr(self, "config_entry") or self.config_entry is None:
-                        # Get user info from sharing to fill entry
-                        # For now use generic
-                        return await self._create_entry({
-                            CONF_NO_CLOUD: False, # Flag to indicate we used sharing/cloud
-                            CONF_USERNAME: "Tuya Hybrid",
-                            ATTR_UPDATED_AT: str(int(time.time() * 1000)),
-                        })
+                        return await self.async_step_auto_import()
                     
                     # If we are in OptionsFlow, just proceed to add device
                     return await self.async_step_add_device()
@@ -499,6 +568,38 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="cloud_sharing_qr",
             errors=errors,
             description_placeholders={"qr_code": f"![QR Code]({qr_code_url})"},
+        )
+
+    async def async_step_auto_import(self, user_input=None):
+        """Automatically import all devices from cloud in ConfigFlow."""
+        if user_input is not None:
+            if user_input.get("do_import"):
+                data = self.hass.data.get(DOMAIN, {})
+                cloud_sharing = data.get("sharing")
+                cloud_devs = {}
+                if DATA_CLOUD in data and data[DATA_CLOUD]:
+                    cloud_devs = data[DATA_CLOUD].device_list
+                configured, new_count = await _generate_auto_import_devices(self.hass, cloud_sharing, cloud_devs)
+                
+                return await self._create_entry({
+                    CONF_NO_CLOUD: False,
+                    CONF_USERNAME: "Tuya Hybrid",
+                    ATTR_UPDATED_AT: str(int(time.time() * 1000)),
+                    CONF_DEVICES: configured,
+                })
+            else:
+                return await self._create_entry({
+                    CONF_NO_CLOUD: False,
+                    CONF_USERNAME: "Tuya Hybrid",
+                    ATTR_UPDATED_AT: str(int(time.time() * 1000)),
+                })
+
+        cloud_data = self.hass.data.get(DOMAIN, {}).get(DATA_CLOUD)
+        devices_count = len(cloud_data.device_list) if cloud_data else 0
+        return self.async_show_form(
+            step_id="auto_import",
+            data_schema=vol.Schema({vol.Optional("do_import", default=True): bool}),
+            description_placeholders={"count": str(devices_count)},
         )
 
     async def async_step_import(self, user_input):
@@ -532,6 +633,8 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
                 return await self.async_step_cloud_setup()
             if user_input.get(CONF_ACTION) == CONF_SETUP_CLOUD_SHARING:
                 return await self.async_step_cloud_sharing()
+            if user_input.get(CONF_ACTION) == CONF_AUTO_IMPORT:
+                return await self.async_step_auto_import()
             if user_input.get(CONF_ACTION) == CONF_ADD_DEVICE:
                 return await self.async_step_add_device()
             if user_input.get(CONF_ACTION) == CONF_EDIT_DEVICE:
@@ -610,6 +713,39 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_cloud_sharing_qr(self, user_input=None):
         """Handle QR code scan confirmation for Options Flow."""
         return await LocaltuyaConfigFlow.async_step_cloud_sharing_qr(self, user_input)
+
+    async def async_step_auto_import(self, user_input=None):
+        """Automatically import all devices from cloud."""
+        if user_input is not None:
+            # User confirmed the import
+            data = self.hass.data.get(DOMAIN, {})
+            if not data or DATA_CLOUD not in data or not data[DATA_CLOUD]:
+                return self.async_abort(reason="no_cloud_connection")
+            
+            cloud_sharing = data.get("sharing")
+            cloud_devs = data[DATA_CLOUD].device_list
+            configured_devices = self.config_entry.data.get(CONF_DEVICES, {})
+            
+            configured, new_count = await _generate_auto_import_devices(self.hass, cloud_sharing, cloud_devs, configured_devices)
+
+            if new_count > 0:
+                new_data = self.config_entry.data.copy()
+                new_data[CONF_DEVICES] = configured
+                new_data[ATTR_UPDATED_AT] = str(int(time.time() * 1000))
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry,
+                    data=new_data,
+                )
+                return self.async_create_entry(title="", data={})
+            
+            return self.async_abort(reason="no_new_devices")
+
+        cloud_data = self.hass.data.get(DOMAIN, {}).get(DATA_CLOUD)
+        devices_count = len(cloud_data.device_list) if cloud_data else 0
+        return self.async_show_form(
+            step_id="auto_import",
+            description_placeholders={"count": str(devices_count)},
+        )
 
     async def async_step_add_device(self, user_input=None):
         """Handle adding a new device."""

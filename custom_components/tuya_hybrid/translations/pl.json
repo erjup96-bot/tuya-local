@@ -20,7 +20,15 @@
                 "title": "Konfiguracja Konta Tuya Hybrid",
                 "description": "Wybierz metodę konfiguracji.",
                 "data": {
-                    "action": "Akcja"
+                    "action": "Akcja",
+                    "auto_import": "Automatycznie dodaj wszystkie wykryte urządzenia z chmury"
+                }
+            },
+            "auto_import": {
+                "title": "Automatyczny Import",
+                "description": "Ta operacja automatycznie zaimportuje wszystkie {count} urządzenia znalezione na Twoim koncie Tuya, używając danych z chmury. Urządzenia już skonfigurowane zostaną pominięte. Kontynuować?",
+                "data": {
+                    "do_import": "Zaimportuj wszystkie urządzenia"
                 }
             },
             "cloud_sharing": {
@@ -67,7 +75,8 @@
                 "title": "Konfiguracja Tuya Hybrid",
                 "description": "Wybierz działanie, które chcesz podjąć.",
                 "data": {
-                    "action": "Akcja"
+                    "action": "Akcja",
+                    "auto_import": "Automatycznie dodaj wszystkie wykryte urządzenia z chmury"
                 }
             },
             "cloud_sharing": {

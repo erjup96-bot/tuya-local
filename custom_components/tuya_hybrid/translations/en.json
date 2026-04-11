@@ -29,6 +29,13 @@
                     "action": "Action"
                 }
             },
+            "auto_import": {
+                "title": "Automatic Import",
+                "description": "Found {count} devices in your Tuya account. Do you want to automatically import them with auto-detected entities?",
+                "data": {
+                    "do_import": "Import all devices"
+                }
+            },
             "cloud_sharing": {
                 "title": "Link Tuya Account (Easy Login)",
                 "description": "Enter a custom identifier for this session, then click submit to generate a QR code.",
@@ -83,7 +90,15 @@
                     "add_device": "Add a new device",
                     "edit_device": "Edit a device",
                     "setup_cloud": "Reconfigure Cloud API (Client ID/Secret)",
-                    "setup_cloud_sharing": "Link Tuya Account (Easy Login via QR Code)"
+                    "setup_cloud_sharing": "Link Tuya Account (Easy Login via QR Code)",
+                    "auto_import": "Automatically add all discovered cloud devices"
+                }
+            },
+            "auto_import": {
+                "title": "Automatic Import",
+                "description": "This will automatically import all {count} devices found on your Tuya account using cloud data. Devices already configured will be skipped. Proceed?",
+                "data": {
+                    "do_import": "Import all devices"
                 }
             },
             "cloud_sharing": {
