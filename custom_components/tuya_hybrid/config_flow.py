@@ -197,11 +197,11 @@ async def _detect_entities_from_datamodel(cloud_sharing, dev_id, active_dps=None
                 elif any(sub in dp_name_lower for sub in ["light", "led", "lamp", "backlight", "indicator", "night", "glow"]):
                     platform = "light"
                 elif any(sub in dp_name_lower for sub in ["siren", "buzzer", "bell", "alarm_sound"]):
-                    platform = "siren"
+                    platform = "switch"
                 elif any(sub in dp_name_lower for sub in ["fan", "ventilator", "purifier"]):
                     platform = "fan"
                 elif any(sub in dp_name_lower for sub in ["lock", "unlocked", "jammed"]):
-                    platform = "lock"
+                    platform = "switch"
                 else:
                     platform = "switch"
             elif dp_type == "Enum":
