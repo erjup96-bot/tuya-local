@@ -548,6 +548,7 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_cloud_sharing(self, user_input=None):
         """Handle Tuya Cloud Sharing (Easy Login)."""
+        _LOGGER.debug("DEBUG: async_step_cloud_sharing called with user_input: %s, self type: %s", user_input, type(self))
         errors = {}
         if user_input is not None:
             try:
@@ -572,6 +573,7 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_cloud_sharing_qr(self, user_input=None):
         """Handle QR code scan confirmation."""
+        _LOGGER.debug("DEBUG: async_step_cloud_sharing_qr called with user_input: %s", user_input)
         errors = {}
         if user_input is not None:
             try:
@@ -665,14 +667,17 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         """Manage basic options."""
+        _LOGGER.debug("DEBUG: OptionsFlow async_step_init called with user_input: %s", user_input)
         # device_id = self.config_entry.data[CONF_DEVICE_ID]
         if user_input is not None:
+            _LOGGER.debug("DEBUG: user_input action: %s, CONF_AUTO_IMPORT: %s", user_input.get(CONF_ACTION), CONF_AUTO_IMPORT)
             if user_input.get(CONF_ACTION) == CONF_SETUP_CLOUD:
                 return await self.async_step_cloud_setup()
             if user_input.get(CONF_ACTION) == CONF_SETUP_CLOUD_SHARING:
                 self._auto_import_after_login = False
                 return await self.async_step_cloud_sharing()
-            if user_input.get(CONF_ACTION) == CONF_AUTO_IMPORT:
+            if str(user_input.get(CONF_ACTION)) == "auto_import":
+                _LOGGER.debug("DEBUG: MATCHED auto_import, redirecting to cloud_sharing")
                 self._auto_import_after_login = True
                 return await self.async_step_cloud_sharing()
             if user_input.get(CONF_ACTION) == CONF_ADD_DEVICE:
@@ -756,6 +761,7 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_auto_import(self, user_input=None):
         """Automatically import all devices from cloud."""
+        _LOGGER.debug("DEBUG: OptionsFlow async_step_auto_import called with user_input: %s", user_input)
         if user_input is not None:
             # User confirmed the import
             data = self.hass.data.get(DOMAIN, {})

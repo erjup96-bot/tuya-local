@@ -79,6 +79,13 @@
                     "auto_import": "Automatycznie dodaj wszystkie wykryte urządzenia z chmury"
                 }
             },
+            "auto_import": {
+                "title": "Automatyczny Import",
+                "description": "Ta operacja automatycznie zaimportuje wszystkie {count} urządzenia znalezione na Twoim koncie Tuya, używając danych z chmury. Urządzenia już skonfigurowane zostaną pominięte. Kontynuować?",
+                "data": {
+                    "do_import": "Zaimportuj wszystkie urządzenia"
+                }
+            },
             "cloud_sharing": {
                 "title": "Połącz konto Tuya (Easy Login)",
                 "description": "Wprowadź dowolny identyfikator sesji (np. swoje imię), a następnie kliknij wyślij, aby wygenerować kod QR.",
