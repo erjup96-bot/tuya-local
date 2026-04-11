@@ -40,7 +40,7 @@
                 "title": "Link Tuya Account (Easy Login)",
                 "description": "Enter a custom identifier for this session, then click submit to generate a QR code.",
                 "data": {
-                    "user_code": "Session Identifier"
+                    "user_code": "Security Code (User Code)"
                 }
             },
             "cloud_sharing_qr": {
@@ -105,7 +105,7 @@
                 "title": "Link Tuya Account (Easy Login)",
                 "description": "Enter a custom identifier for this session, then click submit to generate a QR code.",
                 "data": {
-                    "user_code": "Session Identifier"
+                    "user_code": "Security Code (User Code)"
                 }
             },
             "cloud_sharing_qr": {

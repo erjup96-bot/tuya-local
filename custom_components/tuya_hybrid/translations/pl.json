@@ -35,7 +35,7 @@
                 "title": "Połącz konto Tuya (Easy Login)",
                 "description": "Wprowadź dowolny identyfikator sesji (np. swoje imię), a następnie kliknij wyślij, aby wygenerować kod QR.",
                 "data": {
-                    "user_code": "Identyfikator sesji"
+                    "user_code": "Kod bezpieczeństwa (User Code)"
                 }
             },
             "cloud_sharing_qr": {
@@ -83,7 +83,7 @@
                 "title": "Połącz konto Tuya (Easy Login)",
                 "description": "Wprowadź dowolny identyfikator sesji (np. swoje imię), a następnie kliknij wyślij, aby wygenerować kod QR.",
                 "data": {
-                    "user_code": "Identyfikator sesji"
+                    "user_code": "Kod bezpieczeństwa (User Code)"
                 }
             },
             "cloud_sharing_qr": {

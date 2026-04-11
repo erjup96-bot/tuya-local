@@ -584,6 +584,10 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             self.device_list = devices
                     self.hass.data[DOMAIN][DATA_CLOUD] = MockCloudApi(devices)
                     
+                    # If we should auto-import after login, go there next
+                    if getattr(self, "_auto_import_after_login", False):
+                        return await self.async_step_auto_import()
+                    
                     # If we are in ConfigFlow (no config_entry yet), ask if they want to import existing devices
                     if not hasattr(self, "config_entry") or self.config_entry is None:
                         return await self.async_step_auto_import()
@@ -657,6 +661,7 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         self.selected_platform = None
         self.discovered_devices = {}
         self.entities = []
+        self._auto_import_after_login = False
 
     async def async_step_init(self, user_input=None):
         """Manage basic options."""
@@ -665,9 +670,11 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
             if user_input.get(CONF_ACTION) == CONF_SETUP_CLOUD:
                 return await self.async_step_cloud_setup()
             if user_input.get(CONF_ACTION) == CONF_SETUP_CLOUD_SHARING:
+                self._auto_import_after_login = False
                 return await self.async_step_cloud_sharing()
             if user_input.get(CONF_ACTION) == CONF_AUTO_IMPORT:
-                return await self.async_step_auto_import()
+                self._auto_import_after_login = True
+                return await self.async_step_cloud_sharing()
             if user_input.get(CONF_ACTION) == CONF_ADD_DEVICE:
                 return await self.async_step_add_device()
             if user_input.get(CONF_ACTION) == CONF_EDIT_DEVICE:
