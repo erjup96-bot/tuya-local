@@ -588,6 +588,8 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     
                     # If we should auto-import after login, go there next
                     if getattr(self, "_auto_import_after_login", False):
+                        if hasattr(self, "async_step_auto_import_options"):
+                            return await self.async_step_auto_import_options()
                         return await self.async_step_auto_import()
                     
                     # If we are in ConfigFlow (no config_entry yet), ask if they want to import existing devices
@@ -611,6 +613,7 @@ class LocaltuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_auto_import(self, user_input=None):
         """Automatically import all devices from cloud in ConfigFlow."""
+        _LOGGER.debug("DEBUG: ConfigFlow async_step_auto_import called with user_input: %s", user_input)
         if user_input is not None:
             if user_input.get("do_import"):
                 data = self.hass.data.get(DOMAIN, {})
@@ -759,9 +762,9 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         """Handle QR code scan confirmation for Options Flow."""
         return await LocaltuyaConfigFlow.async_step_cloud_sharing_qr(self, user_input)
 
-    async def async_step_auto_import(self, user_input=None):
-        """Automatically import all devices from cloud."""
-        _LOGGER.debug("DEBUG: OptionsFlow async_step_auto_import called with user_input: %s", user_input)
+    async def async_step_auto_import_options(self, user_input=None):
+        """Automatically import all devices from cloud (Options Flow)."""
+        _LOGGER.debug("DEBUG: OptionsFlow async_step_auto_import_options called with user_input: %s", user_input)
         if user_input is not None:
             # User confirmed the import
             data = self.hass.data.get(DOMAIN, {})
@@ -789,8 +792,8 @@ class LocalTuyaOptionsFlowHandler(config_entries.OptionsFlow):
         cloud_data = self.hass.data.get(DOMAIN, {}).get(DATA_CLOUD)
         devices_count = len(cloud_data.device_list) if cloud_data else 0
         return self.async_show_form(
-            step_id="auto_import",
-            description_placeholders={"count": str(devices_count)},
+            step_id="auto_import_options",
+            description_placeholders={"count": f"OPTIONS {str(devices_count)}"},
         )
 
     async def async_step_add_device(self, user_input=None):
