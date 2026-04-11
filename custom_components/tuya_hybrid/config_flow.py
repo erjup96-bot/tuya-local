@@ -1,4 +1,5 @@
 """Config flow for LocalTuya integration integration."""
+import asyncio
 import errno
 import logging
 import time
@@ -145,16 +146,26 @@ def devices_schema(discovered_devices, cloud_devices_list, configured_devices=No
     return vol.Schema({vol.Required(SELECTED_DEVICE): vol.In(devices)})
 
 
-async def _detect_entities_from_datamodel(cloud_sharing, dev_id):
-    """Heuristic logic to detect entities from Tuya datamodel."""
+async def _detect_entities_from_datamodel(cloud_sharing, dev_id, active_dps=None):
+    """Detect entities based on datamodel and active signals."""
     entities = []
     dps_strings = []
-    datamodel = await cloud_sharing.async_get_datamodel(dev_id)
-    if datamodel:
-        for dp in datamodel:
-            dp_id = dp["id"]
-            dp_name = dp["name"]
-            dp_type = dp["type"]
+    try:
+        datamodel = await cloud_sharing.async_get_datamodel(dev_id)
+        if not datamodel:
+            return [], []
+
+        for entry in datamodel:
+            dp_id = str(entry["id"])
+            dp_name = entry["name"]
+            dp_type = entry["type"]
+            
+            # If we have active_dps, filter out those that didn't report signals
+            # unless we don't have ANY signals (then we trust datamodel)
+            if active_dps is not None and len(active_dps) > 0 and dp_id not in active_dps:
+                _LOGGER.debug("Skipping DP %s (%s) for device %s: No signal detected", dp_id, dp_name, dev_id)
+                continue
+
             dps_strings.append(f"{dp_id} ({dp_name})")
             
             platform = "sensor"
@@ -247,6 +258,8 @@ async def _detect_entities_from_datamodel(cloud_sharing, dev_id):
             if device_class:
                 entity["device_class"] = device_class
             entities.append(entity)
+    except Exception as ex:
+        _LOGGER.error("Error detecting entities for device %s: %s", dev_id, ex)
     return entities, dps_strings
 
 
@@ -267,32 +280,75 @@ async def _generate_auto_import_devices(hass, cloud_sharing, cloud_devs, existin
     # Start with empty list if the user wants a fresh sync, 
     # but for now we just update existing and add new.
     # To "remove missing", we should only keep devices that are in cloud_devs.
+    # 20s Active Monitoring Phase
+    _LOGGER.info("Starting 20s active signal monitoring for %d devices...", len(cloud_devs))
+    device_signals = {dev_id: set() for dev_id in cloud_devs}
+    
+    async def monitor_device(dev_id, host, local_key):
+        if not host or not local_key:
+            return
+        try:
+            from . import pytuya
+            # Define a simple listener
+            class Sniffer:
+                def status_updated(self, status):
+                    for dp in status:
+                        device_signals[dev_id].add(str(dp))
+                def disconnected(self): pass
+                def debug(self, msg, *args): pass
+                def warning(self, msg, *args): pass
+                def error(self, msg, *args): pass
+                def info(self, msg, *args): pass
+
+            # Try different protocol versions if 3.3 fails? No, keep it simple for now.
+            interface = await pytuya.connect(host, dev_id, local_key, 3.3, False, Sniffer())
+            # Record initial status
+            initial_status = await interface.status()
+            if initial_status:
+                for dp in initial_status:
+                    device_signals[dev_id].add(str(dp))
+            
+            # Wait for more signals
+            await asyncio.sleep(20)
+            await interface.close()
+        except Exception as ex:
+            _LOGGER.debug("Sniffer failed for %s at %s: %s", dev_id, host, ex)
+
+    # Run all sniffers in parallel
+    sniffer_tasks = []
+    for dev_id, dev_info in cloud_devs.items():
+        # Match cloud device with local discovery for best IP
+        cloud_ip = dev_info.get("ip", "")
+        ip_address = cloud_ip
+        if dev_id in local_devs:
+            ip_address = local_devs[dev_id].get("ip", ip_address)
+        
+        if ip_address:
+            sniffer_tasks.append(monitor_device(dev_id, ip_address, dev_info.get(CONF_LOCAL_KEY)))
+
+    if sniffer_tasks:
+        await asyncio.gather(*sniffer_tasks)
+    
+    _LOGGER.info("Active monitoring complete. Processing results...")
+
     new_configured = {}
     added_count = 0
     updated_count = 0
     
     for dev_id, dev_info in cloud_devs.items():
-        # Optional: Skip devices that are offline if the user really wants that,
-        # but usually it's better to have them as 'Unavailable'
-        # if not dev_info.get("online", True):
-        #     continue
-
         try:
             # Match cloud device with local discovery for best IP
             cloud_ip = dev_info.get("ip", "")
             ip_address = cloud_ip
             if dev_id in local_devs:
                 ip_address = local_devs[dev_id].get("ip", ip_address)
-                _LOGGER.debug("Updated IP for %s from local discovery: %s", dev_id, ip_address)
-            elif cloud_ip:
-                _LOGGER.debug("Using cloud-provided IP for %s: %s", dev_id, ip_address)
-            else:
-                _LOGGER.warning("No IP address found for device %s, connection will likely fail", dev_id)
             
-            entities, dps_strings = await _detect_entities_from_datamodel(cloud_sharing, dev_id)
+            active_dps = device_signals.get(dev_id)
+            entities, dps_strings = await _detect_entities_from_datamodel(cloud_sharing, dev_id, active_dps)
             
             # If no entities found, fallback
             if not entities:
+                # If we have NO signals and NO entities from datamodel, it's truly dead or unknown
                 entities.append({
                     CONF_ID: 1,
                     CONF_FRIENDLY_NAME: "Switch 1",
@@ -302,7 +358,7 @@ async def _generate_auto_import_devices(hass, cloud_sharing, cloud_devs, existin
 
             dev_config = {
                 CONF_FRIENDLY_NAME: dev_info.get("name", f"Tuya {dev_id}"),
-                CONF_HOST: ip_address,
+                CONF_HOST: ip_address or "",
                 CONF_DEVICE_ID: dev_id,
                 CONF_LOCAL_KEY: dev_info.get(CONF_LOCAL_KEY, ""),
                 CONF_PROTOCOL_VERSION: "3.3",
@@ -310,7 +366,7 @@ async def _generate_auto_import_devices(hass, cloud_sharing, cloud_devs, existin
                 CONF_DPS_STRINGS: dps_strings,
             }
             
-            if dev_id in configured:
+            if dev_id in existing_devices:
                 updated_count += 1
             else:
                 added_count += 1
