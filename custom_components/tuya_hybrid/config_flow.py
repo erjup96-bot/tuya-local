@@ -183,17 +183,23 @@ async def _detect_entities_from_datamodel(cloud_sharing, dev_id):
             dp_name_lower = str(dp_name).lower()
             
             if dp_type == "Boolean":
-                if any(sub in dp_name_lower for sub in ["door", "window", "contact", "water", "leak", "motion", "presence", "pir", "tamper", "alarm", "fault", "state"]):
+                if any(sub in dp_name_lower for sub in ["door", "window", "contact", "water", "leak", "motion", "presence", "pir", "tamper", "alarm", "fault", "state", "low", "high", "dry", "wet", "open", "close"]):
                     platform = "binary_sensor"
-                elif any(sub in dp_name_lower for sub in ["light", "led", "lamp"]):
+                elif any(sub in dp_name_lower for sub in ["light", "led", "lamp", "backlight", "indicator"]):
                     platform = "light"
+                elif any(sub in dp_name_lower for sub in ["siren", "buzzer", "bell"]):
+                    platform = "siren"
+                elif any(sub in dp_name_lower for sub in ["fan", "ventilator"]):
+                    platform = "fan"
                 else:
                     platform = "switch"
             elif dp_type == "Enum":
-                if any(sub in dp_name_lower for sub in ["mode", "status", "state"]):
+                if any(sub in dp_name_lower for sub in ["mode", "status", "state", "work", "unit", "fault"]):
                     platform = "sensor"
+                elif any(sub in dp_name_lower for sub in ["fan", "speed", "level"]):
+                    platform = "fan"
             elif dp_type in ["Integer", "Value"]:
-                if any(sub in dp_name_lower for sub in ["temp", "humid", "volt", "current", "power", "batt", "speed", "bright", "color", "time", "count", "value"]):
+                if any(sub in dp_name_lower for sub in ["temp", "humid", "volt", "current", "power", "batt", "speed", "bright", "color", "time", "count", "value", "conc", "signal", "rssi", "energy", "lux", "illumin"]):
                     platform = "sensor"
                 else:
                     platform = "number"
@@ -210,6 +216,16 @@ async def _generate_auto_import_devices(hass, cloud_sharing, cloud_devs, existin
     if existing_devices is None:
         existing_devices = {}
     
+    # Perform local discovery to get reliable local IPs
+    from .discovery import discover
+    local_devs = {}
+    try:
+        _LOGGER.debug("Starting local discovery for auto-import...")
+        local_devs = await discover()
+        _LOGGER.debug("Discovered %d devices locally", len(local_devs))
+    except Exception as ex:
+        _LOGGER.warning("Local discovery failed during auto-import: %s", ex)
+
     configured = existing_devices.copy()
     new_devices = 0
     
@@ -218,6 +234,12 @@ async def _generate_auto_import_devices(hass, cloud_sharing, cloud_devs, existin
             continue
             
         try:
+            # Match cloud device with local discovery for best IP
+            ip_address = dev_info.get("ip", "")
+            if dev_id in local_devs:
+                ip_address = local_devs[dev_id].get("ip", ip_address)
+                _LOGGER.debug("Updated IP for %s from local discovery: %s", dev_id, ip_address)
+            
             entities = []
             dps_strings = []
             if cloud_sharing:
