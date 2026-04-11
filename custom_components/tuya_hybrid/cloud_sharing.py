@@ -226,16 +226,15 @@ class Cloud:
             response = response["result"]
         transform = []
         for entry in response.get("dpStatusRelationDTOS"):
-            if entry["supportLocal"]:
-                transform.append(
-                    {
-                        "id": entry["dpId"],
-                        "name": entry["dpCode"],
-                        "type": entry["valueType"],
-                        "format": entry["valueDesc"],
-                        "enumMap": entry["enumMappingMap"],
-                    }
-                )
+            transform.append(
+                {
+                    "id": entry["dpId"],
+                    "name": entry["dpCode"],
+                    "type": entry["valueType"],
+                    "format": entry["valueDesc"],
+                    "enumMap": entry["enumMappingMap"],
+                }
+            )
         return transform
 
     def logout(self) -> None:

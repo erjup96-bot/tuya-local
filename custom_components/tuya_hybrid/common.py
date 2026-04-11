@@ -187,23 +187,31 @@ class TuyaDevice(pytuya.TuyaListener, pytuya.ContextualLogger):
         """Subscribe localtuya entity events."""
         self.info("Trying to connect to %s...", self._dev_config_entry[CONF_HOST])
 
-        try:
-            self._interface = await pytuya.connect(
-                self._dev_config_entry[CONF_HOST],
-                self._dev_config_entry[CONF_DEVICE_ID],
-                self._local_key,
-                float(self._dev_config_entry[CONF_PROTOCOL_VERSION]),
-                self._dev_config_entry.get(CONF_ENABLE_DEBUG, False),
-                self,
-            )
-            self._interface.add_dps_to_request(self.dps_to_request)
-        except Exception as ex:  # pylint: disable=broad-except
-            self.warning(
-                f"Failed to connect to {self._dev_config_entry[CONF_HOST]}: %s", ex
-            )
-            if self._interface is not None:
-                await self._interface.close()
-                self._interface = None
+        max_retries = 3
+        retry_delay = 2
+        for attempt in range(max_retries):
+            try:
+                self._interface = await pytuya.connect(
+                    self._dev_config_entry[CONF_HOST],
+                    self._dev_config_entry[CONF_DEVICE_ID],
+                    self._local_key,
+                    float(self._dev_config_entry[CONF_PROTOCOL_VERSION]),
+                    self._dev_config_entry.get(CONF_ENABLE_DEBUG, False),
+                    self,
+                )
+                self._interface.add_dps_to_request(self.dps_to_request)
+                break
+            except Exception as ex:
+                if attempt < max_retries - 1:
+                    self.debug("Connection attempt %d failed, retrying in %ds...", attempt + 1, retry_delay)
+                    await asyncio.sleep(retry_delay)
+                else:
+                    self.warning(
+                        f"Failed to connect to {self._dev_config_entry[CONF_HOST]} after {max_retries} attempts: %s", ex
+                    )
+                    if self._interface is not None:
+                        await self._interface.close()
+                        self._interface = None
 
         if self._interface is not None:
             try:

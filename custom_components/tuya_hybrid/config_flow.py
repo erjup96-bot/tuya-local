@@ -158,35 +158,95 @@ async def _detect_entities_from_datamodel(cloud_sharing, dev_id):
             dps_strings.append(f"{dp_id} ({dp_name})")
             
             platform = "sensor"
+            device_class = None
             dp_name_lower = str(dp_name).lower()
             
             if dp_type == "Boolean":
-                if any(sub in dp_name_lower for sub in ["door", "window", "contact", "water", "leak", "motion", "presence", "pir", "tamper", "alarm", "fault", "state", "low", "high", "dry", "wet", "open", "close"]):
+                if any(sub in dp_name_lower for sub in ["door", "window", "contact", "open", "close"]):
                     platform = "binary_sensor"
-                elif any(sub in dp_name_lower for sub in ["light", "led", "lamp", "backlight", "indicator"]):
+                    device_class = "door" if "door" in dp_name_lower else "window" if "window" in dp_name_lower else "opening"
+                elif any(sub in dp_name_lower for sub in ["water", "leak", "flood"]):
+                    platform = "binary_sensor"
+                    device_class = "moisture"
+                elif any(sub in dp_name_lower for sub in ["motion", "presence", "pir"]):
+                    platform = "binary_sensor"
+                    device_class = "motion"
+                elif any(sub in dp_name_lower for sub in ["smoke", "gas", "carbon_monoxide", "co"]):
+                    platform = "binary_sensor"
+                    device_class = "smoke" if "smoke" in dp_name_lower else "gas"
+                elif any(sub in dp_name_lower for sub in ["tamper", "alarm", "fault"]):
+                    platform = "binary_sensor"
+                    device_class = "problem"
+                elif any(sub in dp_name_lower for sub in ["charge", "battery", "low_power"]):
+                    platform = "binary_sensor"
+                    device_class = "battery"
+                elif any(sub in dp_name_lower for sub in ["online", "state", "status"]):
+                    platform = "binary_sensor"
+                    device_class = "connectivity"
+                elif any(sub in dp_name_lower for sub in ["light", "led", "lamp", "backlight", "indicator", "night", "glow"]):
                     platform = "light"
-                elif any(sub in dp_name_lower for sub in ["siren", "buzzer", "bell"]):
+                elif any(sub in dp_name_lower for sub in ["siren", "buzzer", "bell", "alarm_sound"]):
                     platform = "siren"
-                elif any(sub in dp_name_lower for sub in ["fan", "ventilator"]):
+                elif any(sub in dp_name_lower for sub in ["fan", "ventilator", "purifier"]):
                     platform = "fan"
+                elif any(sub in dp_name_lower for sub in ["lock", "unlocked", "jammed"]):
+                    platform = "lock"
                 else:
                     platform = "switch"
             elif dp_type == "Enum":
-                if any(sub in dp_name_lower for sub in ["mode", "status", "state", "work", "unit", "fault"]):
+                if any(sub in dp_name_lower for sub in ["mode", "status", "state", "work", "unit", "fault", "level", "grade", "gear"]):
                     platform = "sensor"
-                elif any(sub in dp_name_lower for sub in ["fan", "speed", "level"]):
+                elif any(sub in dp_name_lower for sub in ["fan", "speed", "flow"]):
                     platform = "fan"
+                elif any(sub in dp_name_lower for sub in ["light", "color", "scene"]):
+                    platform = "light"
+                else:
+                    platform = "sensor"
             elif dp_type in ["Integer", "Value"]:
-                if any(sub in dp_name_lower for sub in ["temp", "humid", "volt", "current", "power", "batt", "speed", "bright", "color", "time", "count", "value", "conc", "signal", "rssi", "energy", "lux", "illumin"]):
+                if any(sub in dp_name_lower for sub in ["temp"]):
+                    platform = "sensor"
+                    device_class = "temperature"
+                elif any(sub in dp_name_lower for sub in ["humid"]):
+                    platform = "sensor"
+                    device_class = "humidity"
+                elif any(sub in dp_name_lower for sub in ["volt"]):
+                    platform = "sensor"
+                    device_class = "voltage"
+                elif any(sub in dp_name_lower for sub in ["current"]):
+                    platform = "sensor"
+                    device_class = "current"
+                elif any(sub in dp_name_lower for sub in ["power"]):
+                    platform = "sensor"
+                    device_class = "power"
+                elif any(sub in dp_name_lower for sub in ["energy"]):
+                    platform = "sensor"
+                    device_class = "energy"
+                elif any(sub in dp_name_lower for sub in ["batt"]):
+                    platform = "sensor"
+                    device_class = "battery"
+                elif any(sub in dp_name_lower for sub in ["lux", "illumin"]):
+                    platform = "sensor"
+                    device_class = "illuminance"
+                elif any(sub in dp_name_lower for sub in ["press"]):
+                    platform = "sensor"
+                    device_class = "pressure"
+                elif any(sub in dp_name_lower for sub in ["aqi", "co2", "pm25", "voc"]):
+                    platform = "sensor"
+                elif any(sub in dp_name_lower for sub in ["speed", "bright", "color", "time", "count", "value", "conc", "signal", "rssi", "distance", "weight", "height", "capacity"]):
                     platform = "sensor"
                 else:
                     platform = "number"
+            elif dp_type == "String":
+                platform = "sensor"
             
-            entities.append({
+            entity = {
                 CONF_ID: int(dp_id),
                 CONF_FRIENDLY_NAME: str(dp_name).replace("_", " ").title(),
                 CONF_PLATFORM: platform,
-            })
+            }
+            if device_class:
+                entity["device_class"] = device_class
+            entities.append(entity)
     return entities, dps_strings
 
 
@@ -204,24 +264,32 @@ async def _generate_auto_import_devices(hass, cloud_sharing, cloud_devs, existin
     except Exception as ex:
         _LOGGER.warning("Local discovery failed during auto-import: %s", ex)
 
-    configured = existing_devices.copy()
-    new_devices = 0
+    # Start with empty list if the user wants a fresh sync, 
+    # but for now we just update existing and add new.
+    # To "remove missing", we should only keep devices that are in cloud_devs.
+    new_configured = {}
+    added_count = 0
+    updated_count = 0
     
     for dev_id, dev_info in cloud_devs.items():
-        if dev_id in configured:
-            continue
-            
+        # Optional: Skip devices that are offline if the user really wants that,
+        # but usually it's better to have them as 'Unavailable'
+        # if not dev_info.get("online", True):
+        #     continue
+
         try:
             # Match cloud device with local discovery for best IP
-            ip_address = dev_info.get("ip", "")
+            cloud_ip = dev_info.get("ip", "")
+            ip_address = cloud_ip
             if dev_id in local_devs:
                 ip_address = local_devs[dev_id].get("ip", ip_address)
                 _LOGGER.debug("Updated IP for %s from local discovery: %s", dev_id, ip_address)
+            elif cloud_ip:
+                _LOGGER.debug("Using cloud-provided IP for %s: %s", dev_id, ip_address)
+            else:
+                _LOGGER.warning("No IP address found for device %s, connection will likely fail", dev_id)
             
-            entities = []
-            dps_strings = []
-            if cloud_sharing:
-                entities, dps_strings = await _detect_entities_from_datamodel(cloud_sharing, dev_id)
+            entities, dps_strings = await _detect_entities_from_datamodel(cloud_sharing, dev_id)
             
             # If no entities found, fallback
             if not entities:
@@ -234,19 +302,26 @@ async def _generate_auto_import_devices(hass, cloud_sharing, cloud_devs, existin
 
             dev_config = {
                 CONF_FRIENDLY_NAME: dev_info.get("name", f"Tuya {dev_id}"),
-                CONF_HOST: dev_info.get("ip", ""),
+                CONF_HOST: ip_address,
                 CONF_DEVICE_ID: dev_id,
                 CONF_LOCAL_KEY: dev_info.get(CONF_LOCAL_KEY, ""),
                 CONF_PROTOCOL_VERSION: "3.3",
                 CONF_ENTITIES: entities,
                 CONF_DPS_STRINGS: dps_strings,
             }
-            configured[dev_id] = dev_config
-            new_devices += 1
+            
+            if dev_id in configured:
+                updated_count += 1
+            else:
+                added_count += 1
+                
+            new_configured[dev_id] = dev_config
+            
         except Exception as ex:
             _LOGGER.error("Failed to auto-import device %s: %s", dev_id, ex)
 
-    return configured, new_devices
+    _LOGGER.info("Auto-import complete: %d added, %d updated", added_count, updated_count)
+    return new_configured, added_count
 
 
 def options_schema(entities):
